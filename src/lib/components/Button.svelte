@@ -56,7 +56,7 @@
 		<Icon class={v.iconColor} />
 	{/if}
 	{#if children}
-		<span class="mr-1">
+		<span class="mr-1 max-md:hidden">
 			{@render children()}
 		</span>
 	{/if}

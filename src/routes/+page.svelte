@@ -4,7 +4,7 @@
 	import { compile } from "$lib/language/compile"
 	import type { Contraption } from "$lib/language/contraption"
 	import samples from "$lib/language/samples"
-	import { OctagonMinus, PanelRightClose, Play } from "@lucide/svelte"
+	import { OctagonMinus, PanelBottomClose, PanelRightClose, Play } from "@lucide/svelte"
 	import { onDestroy } from "svelte"
 
 	// prettier-ignore
@@ -105,7 +105,7 @@
 			</div>
 		{/if}
 		<label class="ml-auto">
-			Simulation Speed:
+			<span class="max-md:hidden">Simulation Speed:</span>
 			<select bind:value={tickSpeed} class="cursor-pointer rounded bg-zinc-950 px-2 py-1">
 				<option value={10}>Super Fast</option>
 				<option value={100}>Fast</option>
@@ -114,7 +114,7 @@
 			</select>
 		</label>
 		<label class="mr-2 ml-4">
-			Sample:
+			<span class="max-md:hidden">Sample:</span>
 			<select
 				onchange={(e) => setSample(e.currentTarget.value)}
 				class="cursor-pointer rounded bg-zinc-950 px-2 py-1 disabled:text-zinc-600"
@@ -126,7 +126,11 @@
 			</select>
 		</label>
 	</div>
-	<div class="grid h-full w-screen overflow-hidden {showOutput ? 'grid-cols-2' : 'grid-cols-1'}">
+	<div
+		class="grid h-full w-screen overflow-hidden {showOutput
+			? 'max-md:grid-rows-2 md:grid-cols-2'
+			: 'max-md:grid-rows-1 md:grid-cols-1'}"
+	>
 		<Editor
 			bind:this={editor}
 			bind:value={content}
@@ -147,7 +151,15 @@
 						editor?.layout()
 					}}
 					icon={PanelRightClose}
-					class="absolute top-2 right-2"
+					class="fixed top-14 right-2 block max-md:hidden"
+				/>
+				<Button
+					onclick={() => {
+						showOutput = false
+						editor?.layout()
+					}}
+					icon={PanelBottomClose}
+					class="fixed right-2 bottom-2 max-md:block md:hidden"
 				/>
 			</div>
 		{/if}
