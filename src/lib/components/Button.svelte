@@ -14,15 +14,7 @@
 		children?: Snippet
 	}
 
-	let {
-		icon,
-		variant = "primary",
-		active = false,
-		disabled,
-		class: className,
-		children,
-		...props
-	}: Props = $props()
+	let { icon, variant = "primary", active = false, disabled, class: className, children, ...props }: Props = $props()
 
 	const variants = {
 		primary: {

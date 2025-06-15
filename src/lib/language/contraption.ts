@@ -73,7 +73,7 @@ export class Contraption {
 	public getActiveRanges(): Span[] {
 		return this.grid
 			.flatMap((row) => row)
-			.filter((cell) => cell.activated())
+			.filter((cell) => cell.activatedThisTick)
 			.map((cell) => cell.span)
 	}
 
@@ -93,7 +93,7 @@ export class Contraption {
 		for (let y = 0; y < this.height; y++) {
 			for (let x = 0; x < this.width; x++) {
 				const cell = this.grid[y][x]
-				cell.reset()
+				cell.activatedThisTick = false
 			}
 		}
 	}
@@ -105,7 +105,7 @@ export class Contraption {
 		for (let y = 0; y < this.height; y++) {
 			for (let x = 0; x < this.width; x++) {
 				const cell = this.grid[y][x]
-				cell.tick(this)
+				cell.kind.tick(cell, this)
 			}
 		}
 
@@ -157,7 +157,7 @@ export class Contraption {
 			}
 
 			const targetCell = this.getCell(move.targetX, move.targetY)
-			if (targetCell === null || targetCell.isSolid(this)) continue
+			if (targetCell === null || targetCell.kind.isSolid(targetCell, this)) continue
 
 			move.marble.x = move.targetX
 			move.marble.y = move.targetY
@@ -175,7 +175,7 @@ export class Contraption {
 			}
 
 			const cellBelow = this.getCell(marble.x, marble.y + 1)
-			if (cellBelow == null || cellBelow.isSolid(this)) {
+			if (cellBelow == null || cellBelow.kind.isSolid(cellBelow, this)) {
 				marble.movedThisTick = true
 				continue
 			}
@@ -195,7 +195,7 @@ export class Contraption {
 	}
 
 	render(showMarbles = false): string {
-		const renderGrid = this.grid.map((row) => row.map((cell) => cell.render()))
+		const renderGrid = this.grid.map((row) => row.map((cell) => cell.kind.render?.(cell, this) ?? cell.symbol))
 		if (showMarbles) {
 			for (const marble of this.marbles) {
 				renderGrid[marble.y][marble.x] = marble.value.toString(16).padStart(2, "0")

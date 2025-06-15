@@ -1,4 +1,4 @@
-import { Air, Cell } from "./cell"
+import { type Cell, createAir, createCell } from "./cell"
 import { Contraption } from "./contraption"
 import { createSpan, type Span } from "./span"
 import type { Marble } from "./marble"
@@ -28,10 +28,10 @@ export function compile(source: string): CompilationResult {
 					movedThisTick: false,
 					activatedThisTick: false
 				})
-				return new Air(x, y, span)
+				return createAir(x, y, span)
 			}
 
-			return Cell.from(chunk, x, y, span, ctx)
+			return createCell(chunk, x, y, span, ctx)
 		})
 	})
 	const width = Math.max(...grid.map((row) => row.length))
@@ -41,7 +41,7 @@ export function compile(source: string): CompilationResult {
 		while (row.length < width) {
 			const x = row.length
 			const span = createSpan(y + 1, x * 2 + 1, y + 1, x * 2 + 3)
-			row.push(new Air(x, y, span))
+			row.push(createAir(x, y, span))
 		}
 	}
 

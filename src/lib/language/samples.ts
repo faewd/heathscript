@@ -18,7 +18,5 @@ const samplesRaw = {
   `
 }
 
-const samples = Object.fromEntries(
-	Object.entries(samplesRaw).map(([key, sample]) => [key, dedent(sample.trim())])
-)
+const samples = Object.fromEntries(Object.entries(samplesRaw).map(([key, sample]) => [key, dedent(sample.trim())]))
 export default samples

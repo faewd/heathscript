@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { cellTypes } from "$lib/language/cell"
 	import { compile } from "$lib/language/compile"
 	import type { Contraption } from "$lib/language/contraption"
 	import type { Marble } from "$lib/language/marble"
@@ -64,7 +65,7 @@
 				if (contraption === null) return undefined
 				const cell = contraption.getCellAtPosition(pos.lineNumber, pos.column)
 				if (cell === null) return undefined
-				const contents = [{ value: `${cell.constructor.name}` }]
+				const contents = [{ value: `${cell.kind.name}` }]
 				const marble = contraption.getMarbleAtPosition(pos.lineNumber, pos.column)
 				if (marble !== null)
 					contents.push({
@@ -95,12 +96,11 @@
 			}
 		})
 
-		const cellTypes = ["marble", "air", "wall", "operator", "conveyor", "affector"]
 		monaco.languages.registerDocumentSemanticTokensProvider("heathscript", {
 			getLegend() {
 				return {
 					tokenTypes: ["cell"],
-					tokenModifiers: cellTypes
+					tokenModifiers: [...cellTypes]
 				}
 			},
 			provideDocumentSemanticTokens(_model, _lastResultId, _token) {
@@ -110,12 +110,12 @@
 					let prevLine = 0
 					let prevColumn = 0
 					data.push(
-						...contraption.getCellArray().flatMap(({ span, type, x, y }) => {
+						...contraption.getCellArray().flatMap(({ span, kind, x, y }) => {
 							const line = span.startLineNumber - 1
 							const column = span.startColumn - 1
 							const lineDelta = line - prevLine
 							const columnDelta = prevLine === line ? column - prevColumn : column
-							const cellType = contraption?.getMarble(x, y) ? "marble" : type
+							const cellType = contraption?.getMarble(x, y) ? "marble" : kind.type
 							prevLine = line
 							prevColumn = column
 							return [lineDelta, columnDelta, 2, 0, (1 << cellTypes.indexOf(cellType)) >>> 0]

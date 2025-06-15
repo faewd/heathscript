@@ -36,283 +36,196 @@ function opposite(dir: Direction) {
 	}
 }
 
-function getSymbols(s: string): [string, Direction][] {
+export type Cell = BaseCell | DirectionalCell
+
+type BaseCell = {
+	kind: CellKind
+	symbol: string
+	x: number
+	y: number
+	span: Span
+	activatedThisTick: boolean
+}
+
+type DirectionalCell = BaseCell & { direction: Direction }
+
+export function createCell(symbol: string, x: number, y: number, span: Span, ctx: CompilerContext): Cell {
+	const kind = cellKinds.get(symbol)
+	if (kind === undefined) {
+		ctx.errors.push({ span, message: `Unknown symbol ${symbol} at ${span.startLineNumber}:${span.startColumn}.` })
+		return { kind: errorKind, symbol, x, y, span, activatedThisTick: false }
+	}
+	return createCellOfKind(kind, symbol, x, y, span)
+}
+
+function createCellOfKind(kind: CellKind, symbol: string, x: number, y: number, span: Span): Cell {
+	const direction = kind.directional ? { direction: kind.getDirection(symbol) } : {}
+	return { kind, symbol, x, y, span, activatedThisTick: false, ...direction }
+}
+
+export function createAir(x: number, y: number, span: Span) {
+	return createCellOfKind(air, "··", x, y, span)
+}
+
+type CellKind = {
+	name: string
+	type: CellType
+	symbols: string[]
+	isSolid(cell: Cell, contraption: Contraption): boolean
+	tick(cell: Cell, contraption: Contraption): void
+	render?(cell: Cell, contraption: Contraption): string
+} & (
+	| {
+			directional: false
+			getDirection: undefined
+	  }
+	| {
+			directional: true
+			getDirection(symbol: string): Direction
+	  }
+)
+
+const cellKinds = new Map<string, CellKind>()
+
+export const cellTypes = ["error", "marble", "air", "wall", "operator", "conveyor", "affector"] as const
+type CellType = (typeof cellTypes)[number]
+
+function registerCellKind(
+	name: string,
+	type: CellType,
+	symbol: string | string[],
+	isSolid: boolean | CellKind["isSolid"],
+	tick: CellKind["tick"],
+	getDirection: CellKind["getDirection"] = undefined,
+	render: CellKind["render"] = undefined
+): CellKind {
+	const symbols = Array.isArray(symbol) ? symbol : [symbol]
+	const kind = {
+		name,
+		type,
+		symbols,
+		isSolid: typeof isSolid === "boolean" ? () => isSolid : isSolid,
+		tick,
+		getDirection,
+		directional: getDirection !== undefined,
+		render
+	} as CellKind
+	for (const symbol of symbols) {
+		cellKinds.set(symbol, kind)
+	}
+	return kind
+}
+
+function registerAffector(
+	name: string,
+	symbol: string,
+	effect: (marble: Marble, cell: Cell, contraption: Contraption) => boolean | void
+): CellKind {
+	return registerCellKind(name, "affector", symbol, false, (cell, contraption) => {
+		const marble = contraption.getMarble(cell.x, cell.y)
+		if (marble === null) return
+		const activated = effect(marble, cell, contraption)
+		marble.activatedThisTick = cell.activatedThisTick = activated !== false
+	})
+}
+
+function registerDirectionalOperator(
+	name: string,
+	symbol: string,
+	tick: (cell: DirectionalCell, contraption: Contraption) => void,
+	render: CellKind["render"] = undefined
+): CellKind {
+	const symbols = getDirectionalSymbols(symbol)
+	const dirMap = Object.fromEntries(symbols)
+	return registerCellKind(
+		name,
+		"operator",
+		symbols.map(([s, _]) => s),
+		true,
+		tick,
+		(s) => dirMap[s],
+		render
+	)
+}
+
+function getDirectionalSymbols(s: string): [string, Direction][] {
 	return Object.values(Direction).flatMap(
 		(d) => [`${s}${d}`, `${d}${s}`].map((symbol) => [symbol, d]) as [string, Direction][]
 	)
 }
 
-export abstract class Cell {
-	constructor(
-		public readonly type: string,
-		public readonly x: number,
-		public readonly y: number,
-		public readonly span: Span,
-		protected activatedThisTick = false
-	) {}
-
-	public abstract render(): string
-	public abstract tick(contraption: Contraption): void
-	public abstract isSolid(contraption: Contraption): boolean
-
-	public reset() {
-		this.activatedThisTick = false
-	}
-
-	public activated() {
-		return this.activatedThisTick
-	}
-
-	public static from(symbol: string, x: number, y: number, span: Span, ctx: CompilerContext): Cell {
-		switch (symbol) {
-			case "  ":
-			case "..":
-				return new Air(x, y, span)
-			case "##":
-				return new Wall(x, y, span)
-			case "oo":
-				return new Output(x, y, span)
-			case "++":
-				return new Increment(x, y, span)
-			case "--":
-				return new Decrement(x, y, span)
-			case "xx":
-				return new Delete(x, y, span)
-			case '""':
-				return new Sieve(x, y, span)
-		}
-
-		const first = symbol.charAt(0)
-		if ((Object.values(Direction) as string[]).includes(first) && first === symbol.charAt(1)) {
-			const dir = first as Direction
-			return new Conveyor(x, y, span, dir)
-		}
-
-		const adder = getSymbols("+").find(([s, _]) => symbol === s)
-		if (adder) return new Adder(x, y, span, adder[1])
-
-		const cloner = getSymbols(":").find(([s, _]) => symbol === s)
-		if (cloner) return new Cloner(x, y, span, cloner[1])
-
-		ctx.errors.push({
-			message: `Unknown symbol ${symbol} at ${span.startLineNumber}:${span.startColumn}`,
-			span
-		})
-		return new ErrorCell(x, y, span)
-	}
-}
-
-abstract class PassableCell extends Cell {
-	public isSolid(): boolean {
-		return false
-	}
-}
-
-export class Air extends PassableCell {
-	constructor(x: number, y: number, span: Span) {
-		super("air", x, y, span)
-	}
-
-	public render(): string {
-		return "··"
-	}
-
-	public tick(ignored: Contraption): void {}
-}
-
-class Conveyor extends PassableCell {
-	constructor(
-		x: number,
-		y: number,
-		span: Span,
-		private readonly direction: Direction
-	) {
-		super("conveyor", x, y, span)
-	}
-
-	public render(): string {
-		return this.direction.repeat(2)
-	}
-
-	public tick(contraption: Contraption): void {
-		const marble = contraption.getMarble(this.x, this.y)
-		if (marble === null) return
-		const [x, y] = move(this.x, this.y, this.direction)
-		contraption.move(marble, x, y)
-		this.activatedThisTick = true
-	}
-}
-
-abstract class PassableAffector extends PassableCell {
-	constructor(x: number, y: number, span: Span) {
-		super("affector", x, y, span)
-	}
-
-	public tick(contraption: Contraption): void {
-		const marble = contraption.getMarble(this.x, this.y)
-		if (marble === null) return
-		this.activatedThisTick = marble.activatedThisTick = this.affect(marble, contraption)
-	}
-
-	protected abstract affect(marble: Marble, contraption: Contraption): boolean
-}
-
-class Output extends PassableAffector {
-	public render(): string {
-		return "oo"
-	}
-
-	public affect(marble: Marble, contraption: Contraption) {
-		contraption.printLine(String(marble.value))
-		return true
-	}
-}
-
-class Increment extends PassableAffector {
-	public render(): string {
-		return "++"
-	}
-
-	public affect(marble: Marble, _contraption: Contraption) {
-		marble.value += 1
-		return true
-	}
-}
-
-class Decrement extends PassableAffector {
-	public render(): string {
-		return "--"
-	}
-
-	public affect(marble: Marble, _contraption: Contraption) {
-		marble.value -= 1
-		return true
-	}
-}
-
-class Delete extends PassableAffector {
-	public render(): string {
-		return "xx"
-	}
-
-	public affect(marble: Marble, contraption: Contraption) {
-		contraption.remove(marble)
-		return true
-	}
-}
-
-abstract class SolidCell extends Cell {
-	public abstract render(): string
-	public abstract tick(contraption: Contraption): void
-
-	public isSolid(): boolean {
-		return true
-	}
-}
-
-class Wall extends SolidCell {
-	constructor(x: number, y: number, span: Span) {
-		super("wall", x, y, span)
-	}
-
-	public render(): string {
-		return "##"
-	}
-
-	public tick(ignored: Contraption): void {}
-}
-
-class ErrorCell extends SolidCell {
-	constructor(x: number, y: number, span: Span) {
-		super("error", x, y, span)
-	}
-
-	public render(): string {
-		return "!!"
-	}
-
-	public tick(ignored: Contraption): void {}
-}
-
-abstract class DirectionalCell extends SolidCell {
-	constructor(
-		x: number,
-		y: number,
-		span: Span,
-		protected readonly direction: Direction,
-		private readonly symbol: string
-	) {
-		super("operator", x, y, span)
-	}
-
-	public render(): string {
-		if (this.direction == Direction.LEFT) return this.direction + this.symbol
-		return this.symbol + this.direction
-	}
-}
-
-abstract class DirectionalBinaryOperator extends DirectionalCell {
-	constructor(
-		x: number,
-		y: number,
-		span: Span,
-		direction: Direction,
-		symbol: string,
-		private readonly operator: (a: number, b: number) => number
-	) {
-		super(x, y, span, direction, symbol)
-	}
-
-	public tick(contraption: Contraption): void {
-		const [xA, yA] = move(this.x, this.y, opposite(this.direction))
+function registerBinaryOperator(name: string, symbol: string, operation: (a: number, b: number) => number): CellKind {
+	return registerDirectionalOperator(name, symbol, (cell, contraption) => {
+		const [xA, yA] = move(cell.x, cell.y, opposite(cell.direction))
 		const marbleA = contraption.getMarble(xA, yA)
 		if (marbleA === null) return
-		const [xB, yB] = move(this.x, this.y, this.direction)
+		const [xB, yB] = move(cell.x, cell.y, cell.direction)
 		const marbleB = contraption.getMarble(xB, yB)
 		if (marbleB === null) return
-		marbleB.value = this.operator(marbleA.value, marbleB.value)
-		this.activatedThisTick = true
+		marbleB.value = operation(marbleA.value, marbleB.value)
+		cell.activatedThisTick = true
 		marbleB.activatedThisTick = true
-	}
+	})
 }
 
-class Adder extends DirectionalBinaryOperator {
-	constructor(x: number, y: number, span: Span, direction: Direction) {
-		super(x, y, span, direction, "+", (a, b) => a + b)
-	}
-}
+const NOOP = () => {}
 
-class Cloner extends DirectionalCell {
-	constructor(x: number, y: number, span: Span, direction: Direction) {
-		super(x, y, span, direction, ":")
-	}
+const errorKind = registerCellKind("Error", "error", "!!", true, NOOP)
+const air = registerCellKind("Air", "air", ["  ", "..", "··"], false, NOOP, undefined, () => "··")
+registerCellKind("Wall", "wall", "##", true, NOOP)
 
-	public tick(contraption: Contraption): void {
-		const [sourceX, sourceY] = move(this.x, this.y, opposite(this.direction))
-		const marble = contraption.getMarble(sourceX, sourceY)
-		if (marble === null) return
-		const [targetX, targetY] = move(this.x, this.y, this.direction)
-		const target = contraption.getCell(targetX, targetY)
-		if (target === null || target.isSolid(contraption)) return
-		contraption.spawn(marble.value, targetX, targetY)
-		marble.activatedThisTick = true
-		this.activatedThisTick = true
-	}
-}
+registerAffector("Increment", "++", (m) => {
+	m.value += 1
+})
+registerAffector("Decrement", "--", (m) => {
+	m.value -= 1
+})
 
-class Sieve extends Cell {
-	constructor(x: number, y: number, span: Span) {
-		super("wall", x, y, span)
-	}
+registerAffector("Output", "oo", (m, _, c) => c.printLine(String(m.value)))
+registerAffector("Delete", "xx", (m, _, c) => c.remove(m))
 
-	public render(): string {
-		return '""'
-	}
+registerBinaryOperator("Add", "+", (a, b) => a + b)
+registerBinaryOperator("Subtract", "-", (a, b) => b - a)
+registerBinaryOperator("Multiply", "*", (a, b) => a * b)
+registerBinaryOperator("Divide", "/", (a, b) => Math.floor(b / a))
+registerBinaryOperator("Modulo", "%", (a, b) => b % a)
 
-	public tick(_contraption: Contraption): void {}
+registerDirectionalOperator("Clone", ":", (cell, contraption) => {
+	const [sourceX, sourceY] = move(cell.x, cell.y, opposite(cell.direction))
+	const marble = contraption.getMarble(sourceX, sourceY)
+	if (marble === null) return
+	const [targetX, targetY] = move(cell.x, cell.y, cell.direction)
+	const target = contraption.getCell(targetX, targetY)
+	if (target === null || target.kind.isSolid(target, contraption)) return
+	contraption.spawn(marble.value, targetX, targetY)
+	marble.activatedThisTick = true
+	cell.activatedThisTick = true
+})
 
-	public isSolid(contraption: Contraption): boolean {
-		const marble = contraption.getMarble(this.x, this.y - 1)
+registerCellKind(
+	"Sieve",
+	"wall",
+	'""',
+	(cell, contraption) => {
+		const marble = contraption.getMarble(cell.x, cell.y - 1)
 		return marble === null || marble.value !== 0
-	}
+	},
+	NOOP
+)
+
+for (const dir of Object.values(Direction)) {
+	registerCellKind(
+		"Conveyor",
+		"conveyor",
+		dir.repeat(2),
+		false,
+		(cell: DirectionalCell, contraption) => {
+			const marble = contraption.getMarble(cell.x, cell.y)
+			if (marble === null) return
+			const [x, y] = move(cell.x, cell.y, cell.direction)
+			contraption.move(marble, x, y)
+			cell.activatedThisTick = true
+		},
+		() => dir
+	)
 }
