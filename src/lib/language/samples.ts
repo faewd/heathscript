@@ -10,6 +10,14 @@ const samplesRaw = {
     ^^<<##>>^^
     ##########
   `,
+  fib2: `
+    ..  a:  b:
+        00  01
+    0a~>  
+    ""  oo
+          <+
+    xx  @b  @a
+  `,
 	countdown: `
     0a
     --:>oo

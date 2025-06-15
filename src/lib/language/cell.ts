@@ -87,7 +87,7 @@ type CellKind = {
 
 const cellKinds = new Map<string, CellKind>()
 
-export const cellTypes = ["error", "marble", "air", "wall", "operator", "conveyor", "affector"] as const
+export const cellTypes = ["error", "marble", "air", "wall", "operator", "conveyor", "affector", "teleporter"] as const
 type CellType = (typeof cellTypes)[number]
 
 function registerCellKind(
@@ -202,6 +202,30 @@ registerDirectionalOperator("Clone", ":", (cell, contraption) => {
 	cell.activatedThisTick = true
 })
 
+registerDirectionalOperator("Observer Gate", "#", (cell, contraption) => {
+	const [sourceX, sourceY] = move(cell.x, cell.y, opposite(cell.direction))
+	const sourceMarble = contraption.getMarble(sourceX, sourceY)
+	if (sourceMarble !== null) return;
+	const [targetX, targetY] = move(cell.x, cell.y, cell.direction)
+	const targetMarble = contraption.getMarble(targetX, targetY)
+	if (targetMarble === null) return;
+	targetMarble.movedThisTick = true
+})
+
+registerDirectionalOperator("Counter Gate", "~", (cell, contraption) => {
+	const [sourceX, sourceY] = move(cell.x, cell.y, opposite(cell.direction))
+	const sourceMarble = contraption.getMarble(sourceX, sourceY)
+	const [targetX, targetY] = move(cell.x, cell.y, cell.direction)
+	const targetMarble = contraption.getMarble(targetX, targetY)
+	if (targetMarble) {
+		if (!sourceMarble) targetMarble.movedThisTick = true
+		else {
+			sourceMarble.value -= 1
+			sourceMarble.activatedThisTick = true;
+		}
+	} 
+})
+
 registerCellKind(
 	"Sieve",
 	"wall",
@@ -228,4 +252,19 @@ for (const dir of Object.values(Direction)) {
 		},
 		() => dir
 	)
+}
+
+const base36Digits = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+for (const char of base36Digits) {
+	const label = char + ":"
+
+	registerCellKind("Label", "teleporter", label, false, NOOP)
+
+	registerCellKind("Teleporter", "teleporter", "@" + char, false, (cell, contraption) => {
+		const marble = contraption.getMarble(cell.x, cell.y)
+		if (marble === null) return
+		const target = contraption.getCellArray().find(c => c.symbol === label)
+		if (target === undefined) return
+		contraption.move(marble, target.x, target.y)
+	})
 }

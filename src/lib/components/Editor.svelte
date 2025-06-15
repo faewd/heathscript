@@ -88,7 +88,8 @@
 				{ token: "cell.operator", foreground: "ca8a04" },
 				{ token: "cell.marble", foreground: "10b981" },
 				{ token: "cell.conveyor", foreground: "3f3f46" },
-				{ token: "cell.affector", foreground: "f472b6" }
+				{ token: "cell.affector", foreground: "f472b6" },
+				{ token: "cell.teleporter", foreground: "a78bfa" }
 			],
 			colors: {
 				"editor.foreground": "#a1a1aa",
